@@ -20,40 +20,50 @@ let isUsingFileDb = false;
 
 // Initialize Database (The "Real System" Setup)
 const initRealDb = async () => {
-    // If Postgres is not explicitly enabled, default to File DB
-    if (process.env.USE_POSTGRES !== 'true') {
+    // If Postgres is not explicitly enabled and we aren't on Railway with a DB, default to File DB
+    const hasRailwayDb = process.env.DATABASE_URL || process.env.PGHOST;
+    if (process.env.USE_POSTGRES !== 'true' && !hasRailwayDb) {
         console.log("Using Persistent File-Based Database (Postgres disabled by default)...");
         activeDb = fileDb;
         isUsingFileDb = true;
         return;
     }
 
-    const dbConfig = {
-        user: process.env.DB_USER || 'postgres',
-        host: process.env.DB_HOST || 'localhost',
-        password: process.env.DB_PASSWORD || 'password',
-        port: process.env.DB_PORT || 5432,
-    };
+    const dbConfig = process.env.DATABASE_URL 
+        ? { connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }
+        : {
+            user: process.env.PGUSER || process.env.DB_USER || 'postgres',
+            host: process.env.PGHOST || process.env.DB_HOST || 'localhost',
+            password: process.env.PGPASSWORD || process.env.DB_PASSWORD || 'password',
+            port: process.env.PGPORT || process.env.DB_PORT || 5432,
+            ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+        };
 
-    const targetDb = process.env.DB_NAME || 'rsquare_journal';
+    const targetDb = process.env.PGDATABASE || process.env.DB_NAME || 'rsquare_journal';
 
     try {
         console.log("--- REAL SYSTEM INITIALIZATION ---");
         
-        // 1. Connect to default 'postgres' to check/create target DB
-        const pgClient = new Client({ ...dbConfig, database: 'postgres', connectionTimeoutMillis: 2000 });
-        await pgClient.connect();
-        
-        const dbCheck = await pgClient.query(`SELECT 1 FROM pg_database WHERE datname = $1`, [targetDb]);
-        if (dbCheck.rowCount === 0) {
-            console.log(`Creating database: ${targetDb}`);
-            await pgClient.query(`CREATE DATABASE ${targetDb}`);
-        }
-        await pgClient.end();
+        let appClient;
+        if (process.env.DATABASE_URL) {
+            appClient = new Client(dbConfig);
+            await appClient.connect();
+        } else {
+            // 1. Connect to default 'postgres' to check/create target DB
+            const pgClient = new Client({ ...dbConfig, database: 'postgres', connectionTimeoutMillis: 2000 });
+            await pgClient.connect();
+            
+            const dbCheck = await pgClient.query(`SELECT 1 FROM pg_database WHERE datname = $1`, [targetDb]);
+            if (dbCheck.rowCount === 0) {
+                console.log(`Creating database: ${targetDb}`);
+                await pgClient.query(`CREATE DATABASE ${targetDb}`);
+            }
+            await pgClient.end();
 
-        // 2. Connect to the target DB to setup tables
-        const appClient = new Client({ ...dbConfig, database: targetDb, connectionTimeoutMillis: 2000 });
-        await appClient.connect();
+            // 2. Connect to the target DB to setup tables
+            appClient = new Client({ ...dbConfig, database: targetDb, connectionTimeoutMillis: 2000 });
+            await appClient.connect();
+        }
         
         console.log("Setting up tables and seeding categories...");
         await appClient.query(`
