@@ -59,6 +59,28 @@ INSERT INTO categories (name) VALUES
 ('Clinical Research'), ('Case Reports'), ('Review Articles'), ('Editorial')
 ON CONFLICT (name) DO NOTHING;
 
+-- Reviewers Table
+CREATE TABLE IF NOT EXISTS reviewers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(100) NOT NULL,
+    expertise TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Review Assignments Table
+CREATE TABLE IF NOT EXISTS review_assignments (
+    id SERIAL PRIMARY KEY,
+    article_id INTEGER REFERENCES articles(id),
+    reviewer_id INTEGER REFERENCES reviewers(id),
+    status VARCHAR(50) DEFAULT 'pending',
+    feedback TEXT,
+    score INTEGER,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
 INSERT INTO authors (name, email, affiliation) VALUES 
 ('Dr. R. Square', 'admin@rsquare.com', 'R Square Hospitals Cardiology Dept')
 ON CONFLICT (email) DO NOTHING;

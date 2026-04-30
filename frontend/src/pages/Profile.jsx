@@ -39,7 +39,7 @@ const Profile = () => {
       try {
         setLoading(true);
         // Fetch stats
-        const statsRes = await axios.get(`/api/my-submissions?email=${user.email}`);
+        const statsRes = await axios.get(`/api/my-submissions?email=${encodeURIComponent(user.email)}`);
         const submissions = statsRes.data;
         
         const newStats = submissions.reduce((acc, sub) => {
@@ -54,7 +54,7 @@ const Profile = () => {
         setStats(newStats);
 
         // Fetch full profile
-        const profileRes = await axios.get(`/api/authors/${user.email}`);
+        const profileRes = await axios.get(`/api/authors/${encodeURIComponent(user.email)}`);
         setProfile(profileRes.data);
       } catch (err) {
         console.error("Failed to fetch data", err);

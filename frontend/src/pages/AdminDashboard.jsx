@@ -21,17 +21,83 @@ import {
   Tag,
   Eye,
   Check,
-  Loader2
+  Loader2,
+  MessageSquare
 } from 'lucide-react';
 import RealTimePanel from '../components/RealTimePanel';
+import JournalChat from '../components/JournalChat';
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [articles, setArticles] = useState([]);
+  const [reviewers, setReviewers] = useState([]);
+  const [assigning, setAssigning] = useState(false);
+  const [selectedReviewer, setSelectedReviewer] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedArticle, setSelectedArticle] = useState(null);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [showMessages, setShowMessages] = useState(false);
+  const [allMessages, setAllMessages] = useState([]);
+  const [newToast, setNewToast] = useState(null);
   const navigate = useNavigate();
+
+  const fetchAllMessages = async () => {
+    try {
+      const response = await axios.get('/api/admin/all-messages');
+      const latestMessages = response.data;
+      
+      // If we have new messages that we didn't have before, and the latest one is from an author
+      if (allMessages.length > 0 && latestMessages.length > allMessages.length) {
+        const newest = latestMessages[0]; // DESC order
+        if (newest.sender_role === 'author') {
+            setNewToast(newest);
+            setTimeout(() => setNewToast(null), 5000);
+        }
+      }
+      
+      setAllMessages(latestMessages);
+    } catch (err) {
+      console.error('Error fetching messages:', err);
+    }
+  };
+
+  const fetchReviewers = async () => {
+    try {
+      const response = await axios.get('/api/reviewers');
+      setReviewers(response.data);
+    } catch (err) {
+      console.error('Error fetching reviewers:', err);
+    }
+  };
+
+  const handleAssignReviewer = async () => {
+    if (!selectedReviewer || !selectedArticle) return;
+    setAssigning(true);
+    try {
+      await axios.post('/api/review-assignments', {
+        articleId: selectedArticle.id,
+        reviewerId: selectedReviewer
+      });
+      alert('Reviewer assigned successfully!');
+      setSelectedReviewer('');
+    } catch (err) {
+      console.error('Error assigning reviewer:', err);
+      alert('Failed to assign reviewer.');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllMessages();
+    fetchReviewers();
+    const interval = setInterval(() => {
+      fetchArticles();
+      fetchAllMessages();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Real‑time data is now handled by the RealTimePanel component.
   // The component fetches server health, updates client clock and uptime internally.
@@ -84,7 +150,7 @@ const AdminDashboard = () => {
         alert("Manuscript deleted successfully.");
     } catch (err) {
         console.error('Error deleting manuscript:', err);
-        alert('Failed to delete manuscript');
+        alert('Failed to deleting manuscript');
     } finally {
         setReviewLoading(false);
     }
@@ -131,10 +197,10 @@ const AdminDashboard = () => {
   };
 
   const stats = [
-    { label: 'Total Submissions', value: articles.length, icon: FileText, color: 'bg-blue-500' },
-    { label: 'Pending Review', value: articles.filter(a => a.status === 'pending').length, icon: Clock, color: 'bg-amber-500' },
-    { label: 'Published', value: articles.filter(a => a.status === 'published').length, icon: CheckCircle, color: 'bg-emerald-500' },
-    { label: 'Authors', value: new Set(articles.map(a => a.author_id)).size, icon: Users, color: 'bg-purple-500' },
+    { label: 'Total Submissions', value: (articles || []).length, icon: FileText, color: 'bg-blue-500' },
+    { label: 'Pending Review', value: (articles || []).filter(a => a?.status === 'pending').length, icon: Clock, color: 'bg-amber-500' },
+    { label: 'Published', value: (articles || []).filter(a => a?.status === 'published').length, icon: CheckCircle, color: 'bg-emerald-500' },
+    { label: 'Authors', value: new Set((articles || []).map(a => a?.author_id)).size, icon: Users, color: 'bg-purple-500' },
   ];
 
   return (
@@ -207,10 +273,98 @@ const AdminDashboard = () => {
           </div>
           
           <div className="flex items-center space-x-6">
-            <button className="relative p-2 text-slate-400 hover:text-primary-600 transition-colors">
-              <Bell className="h-6 w-6" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
+            <div className="relative">
+              <button 
+                onClick={() => {
+                    setShowMessages(!showMessages);
+                    if (!showMessages) fetchAllMessages();
+                }}
+                className="relative p-2 text-slate-400 hover:text-primary-600 transition-colors"
+              >
+                <Bell className="h-6 w-6" />
+                {allMessages.length > 0 && (
+                  <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+                )}
+              </button>
+
+              <AnimatePresence>
+                {showMessages && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute right-0 mt-4 w-[400px] bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden z-[110]"
+                  >
+                    <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <MessageSquare className="h-4 w-4" />
+                        <span className="text-xs font-black uppercase tracking-widest">Recent Discussions</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {allMessages.length > 0 && (
+                            <button 
+                                onClick={async () => {
+                                    if (window.confirm("Clear all recent discussions? This will delete author messages from the history.")) {
+                                        try {
+                                            await axios.delete('/api/messages/all');
+                                            fetchAllMessages();
+                                        } catch (err) {
+                                            console.error("Failed to clear messages", err);
+                                        }
+                                    }
+                                }}
+                                className="text-[10px] font-black text-red-400 hover:text-red-300 uppercase tracking-tighter transition-colors"
+                            >
+                                Clear All
+                            </button>
+                        )}
+                        <button onClick={() => setShowMessages(false)}><X className="h-4 w-4" /></button>
+                      </div>
+                    </div>
+                    <div className="max-h-[500px] overflow-y-auto">
+                      {allMessages.length === 0 ? (
+                        <div className="p-10 text-center text-slate-400">
+                          <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                          <p className="text-xs font-bold uppercase tracking-widest">No recent messages</p>
+                        </div>
+                      ) : (
+                        allMessages.map((msg, i) => (
+                          <div 
+                            key={i} 
+                            onClick={() => {
+                                const article = articles.find(a => a.id === msg.article_id);
+                                if (article) setSelectedArticle(article);
+                                setShowMessages(false);
+                            }}
+                            className="p-4 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors"
+                          >
+                            <div className="flex justify-between items-start mb-1">
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${
+                                msg.sender_role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {msg.sender_role === 'admin' ? 'Response Sent' : 'New Message'}
+                              </span>
+                              <span className="text-[9px] font-bold text-slate-400">
+                                {new Date(msg.created_at).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })} • {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p className="text-xs font-bold text-slate-900 truncate mb-1">{msg.article_title}</p>
+                            <p className="text-[11px] text-slate-500 line-clamp-1">{msg.content || (msg.file_name ? '📎 Attachment' : '')}</p>
+                            <div className="flex items-center mt-2 text-[8px] font-black text-slate-300 uppercase tracking-widest">
+                                <span className="mr-2">{msg.sender_name}</span>
+                                {msg.sender_email && (
+                                    <span className="opacity-50">{msg.sender_email.includes('@phone.auth') ? msg.sender_email.split('@')[0] : msg.sender_email}</span>
+                                )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            
             <div className="flex items-center space-x-3">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-black text-slate-900">Dr. Editorial</p>
@@ -274,19 +428,24 @@ const AdminDashboard = () => {
                     <tr className="bg-slate-50">
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Title</th>
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Author</th>
+                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contact Info</th>
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</th>
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {articles.map((article) => (
+                    {(articles || []).map((article) => (
                       <tr key={article.id} className="hover:bg-slate-50/50 transition-colors group">
                         <td className="px-8 py-6">
                           <p className="text-sm font-bold text-slate-900 line-clamp-1 group-hover:text-primary-600 transition-colors">{article.title}</p>
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight mt-0.5">{article.category_name}</p>
                         </td>
                         <td className="px-8 py-6 text-sm font-bold text-slate-600">{article.author_name}</td>
+                        <td className="px-8 py-6">
+                          <p className="text-[11px] font-bold text-slate-900">{article.author_email?.includes('@phone.auth') ? article.author_phone || article.author_email.split('@')[0] : article.author_email}</p>
+                          <p className="text-[9px] font-black text-primary-500 uppercase tracking-tighter">{article.author_email?.includes('@phone.auth') ? 'Phone User' : 'Email User'}</p>
+                        </td>
                         <td className="px-8 py-6 text-sm text-slate-500 font-medium">
                           {new Date(article.created_at || article.published_date).toLocaleDateString()}
                         </td>
@@ -405,14 +564,57 @@ const AdminDashboard = () => {
                             </div>
                         </div>
 
-                        <div className="mb-8">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                <Eye className="h-4 w-4" /> Abstract Preview
-                            </h3>
-                            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                                <p className="text-slate-600 text-sm leading-relaxed font-medium italic">
-                                    {selectedArticle.abstract || 'No abstract provided.'}
-                                </p>
+                        {showChat ? (
+                            <div className="h-[400px] mb-8">
+                                <JournalChat 
+                                    articleId={selectedArticle.id}
+                                    senderRole="admin"
+                                    senderName="Editorial Board"
+                                    senderEmail="admin@rsquare.com"
+                                    onClose={() => setShowChat(false)}
+                                />
+                            </div>
+                        ) : (
+                            <div className="mb-8">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <Eye className="h-4 w-4" /> Abstract Preview
+                                    </h3>
+                                    <button 
+                                        onClick={() => setShowChat(true)}
+                                        className="flex items-center gap-1.5 text-[10px] font-black text-primary-600 uppercase tracking-widest hover:text-primary-700"
+                                    >
+                                        <MessageSquare className="h-3.5 w-3.5" /> Suggest Improvements
+                                    </button>
+                                </div>
+                                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                                    <p className="text-slate-600 text-sm leading-relaxed font-medium italic">
+                                        {selectedArticle.abstract || 'No abstract provided.'}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                        {/* Reviewer Assignment Section */}
+                        <div className="mt-8 pt-8 border-t border-slate-100">
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Peer Review Assignment</h3>
+                            <div className="flex gap-4">
+                                <select 
+                                    value={selectedReviewer}
+                                    onChange={(e) => setSelectedReviewer(e.target.value)}
+                                    className="flex-1 bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-100 transition-all"
+                                >
+                                    <option value="">Select a Reviewer</option>
+                                    {reviewers.map(r => (
+                                        <option key={r.id} value={r.id}>{r.name} ({r.expertise || 'General'})</option>
+                                    ))}
+                                </select>
+                                <button 
+                                    onClick={handleAssignReviewer}
+                                    disabled={!selectedReviewer || assigning}
+                                    className="px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg disabled:opacity-50"
+                                >
+                                    {assigning ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Assign'}
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -426,9 +628,16 @@ const AdminDashboard = () => {
                             {reviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle className="h-4 w-4" /> Approve & Publish</>}
                         </button>
                         <button 
+                            onClick={() => handleUpdateStatus(selectedArticle.id, 'Needs Revision')}
+                            className="flex-1 py-4 bg-amber-500 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-amber-200 flex items-center justify-center space-x-2"
+                        >
+                           <Clock className="h-4 w-4" />
+                           <span>Needs Revision</span>
+                        </button>
+                        <button 
                             disabled={reviewLoading}
                             onClick={() => handleUpdateStatus(selectedArticle.id, 'rejected')}
-                            className="flex-1 py-4 bg-white text-red-600 border border-red-100 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-50 transition-all flex items-center justify-center gap-2"
+                            className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-700 transition-all flex items-center justify-center gap-2"
                         >
                             {reviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><XCircle className="h-4 w-4" /> Reject</>}
                         </button>
@@ -442,6 +651,36 @@ const AdminDashboard = () => {
                     </div>
                 </motion.div>
             </div>
+        )}
+      </AnimatePresence>
+      {/* Notification Toast */}
+      <AnimatePresence>
+        {newToast && (
+          <motion.div
+            initial={{ opacity: 0, x: 100, y: 0 }}
+            animate={{ opacity: 1, x: 0, y: 0 }}
+            exit={{ opacity: 0, x: 100, scale: 0.8 }}
+            onClick={() => {
+                const article = articles.find(a => a.id === newToast.article_id);
+                if (article) setSelectedArticle(article);
+                setNewToast(null);
+            }}
+            className="fixed bottom-8 right-8 z-[200] w-96 bg-white rounded-[2rem] shadow-2xl border border-slate-100 p-6 cursor-pointer hover:shadow-primary-100/50 transition-all group"
+          >
+            <div className="flex items-center space-x-4">
+              <div className="bg-primary-600 p-3 rounded-2xl text-white shadow-lg shadow-primary-200">
+                <MessageSquare className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] font-black text-primary-600 uppercase tracking-widest mb-1">New Message Received</p>
+                <h4 className="text-sm font-black text-slate-900 line-clamp-1">{newToast.article_title}</h4>
+                <p className="text-xs text-slate-500 line-clamp-1 mt-1 font-medium">{newToast.content || 'Sent an attachment'}</p>
+              </div>
+            </div>
+            <div className="absolute top-4 right-4 text-[9px] font-black text-slate-300 uppercase tracking-tighter">
+                {new Date(newToast.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

@@ -3,11 +3,14 @@ import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import Hero from '../components/Hero';
 import ArticleCard from '../components/ArticleCard';
-import { TrendingUp, FileText, Award, Activity, Heart, ShieldCheck, Microscope, Database, Users, Star, Quote, BookOpen, Brain, Globe } from 'lucide-react';
+import { TrendingUp, FileText, Award, Activity, Heart, ShieldCheck, Microscope, Database, Users, Star, Quote, BookOpen, Brain, Globe, Search } from 'lucide-react';
 
 const Home = () => {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [categories, setCategories] = useState(['All', 'Clinical Research', 'Case Reports', 'Review Articles', 'Editorial']);
 
   useEffect(() => {
     const fetchArticles = async () => {
@@ -27,6 +30,13 @@ const Home = () => {
 
     fetchArticles();
   }, []);
+
+  const filteredArticles = articles.filter(art => {
+    const matchesSearch = art.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         (art.author_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'All' || art.category_name === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   const featuredArticles = [
     {
@@ -223,14 +233,37 @@ const Home = () => {
 
       {/* Latest Submissions Feed */}
       <section className="py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 bg-slate-50 rounded-[4rem] mb-24">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-16 gap-6 px-8">
-          <div className="max-w-2xl text-center md:text-left">
-            <h2 className="text-4xl font-black text-slate-900 tracking-tight leading-[1.1]">
+        <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-8 px-8">
+          <div className="max-w-xl w-full">
+            <h2 className="text-4xl font-black text-slate-900 tracking-tight leading-[1.1] mb-6">
               Recent Research <span className="text-primary-600">Archive</span>
             </h2>
-            <p className="text-slate-400 mt-2 font-medium">Browse the latest contributions from our growing global community.</p>
+            <div className="relative group">
+                <Search className="absolute left-6 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300 group-focus-within:text-primary-500 transition-colors" />
+                <input 
+                    type="text" 
+                    placeholder="Search by title or author..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-14 pr-8 py-5 bg-white rounded-2xl border border-slate-100 shadow-lg shadow-slate-200/50 focus:outline-none focus:ring-2 focus:ring-primary-100 transition-all font-bold text-slate-700"
+                />
+            </div>
           </div>
-          <button className="px-10 py-4 rounded-full bg-slate-900 text-sm font-black text-white shadow-xl hover:bg-slate-800 transition-all">Explore Full Archive</button>
+          <div className="flex flex-wrap gap-2 justify-center md:justify-end">
+            {categories.map((cat) => (
+                <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                        selectedCategory === cat 
+                        ? 'bg-slate-900 text-white shadow-xl shadow-slate-200' 
+                        : 'bg-white text-slate-400 hover:bg-slate-100 border border-slate-50'
+                    }`}
+                >
+                    {cat}
+                </button>
+            ))}
+          </div>
         </div>
 
         {loading ? (
@@ -242,18 +275,25 @@ const Home = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 px-8">
             <AnimatePresence>
-              {articles.map((article, idx) => (
-                <ArticleCard 
-                    key={article.id} 
-                    article={{
-                        ...article,
-                        author: article.author_name,
-                        category: article.category_name,
-                        date: article.published_date
-                    }} 
-                    index={idx} 
-                />
-              ))}
+              {filteredArticles.length === 0 ? (
+                  <div className="col-span-full py-20 text-center">
+                      <Search className="h-12 w-12 text-slate-200 mx-auto mb-4" />
+                      <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No matching articles found.</p>
+                  </div>
+              ) : (
+                filteredArticles.map((article, idx) => (
+                    <ArticleCard 
+                        key={article.id} 
+                        article={{
+                            ...article,
+                            author: article.author_name,
+                            category: article.category_name,
+                            date: article.published_date
+                        }} 
+                        index={idx} 
+                    />
+                ))
+              )}
             </AnimatePresence>
           </div>
         )}

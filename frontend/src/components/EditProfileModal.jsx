@@ -21,7 +21,7 @@ const EditProfileModal = ({ isOpen, onClose, user, onUpdate }) => {
   const fetchCurrentProfile = async () => {
     setFetching(true);
     try {
-      const response = await axios.get(`/api/authors/${user.email}`);
+      const response = await axios.get(`/api/authors/${encodeURIComponent(user.email)}`);
       setFormData({
         name: response.data.name || '',
         affiliation: response.data.affiliation || '',
@@ -44,7 +44,7 @@ const EditProfileModal = ({ isOpen, onClose, user, onUpdate }) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await axios.put(`/api/authors/${user.email}`, formData);
+      const response = await axios.put(`/api/authors/${encodeURIComponent(user.email)}`, formData);
       onUpdate(response.data);
       onClose();
     } catch (err) {

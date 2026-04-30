@@ -4,12 +4,15 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import About from './pages/About';
+import Archive from './pages/Archive';
 import SubmitManuscript from './pages/SubmitManuscript';
 import SubmissionHistory from './pages/SubmissionHistory';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
+import AuthorDashboard from './pages/AuthorDashboard';
+import ReviewerDashboard from './pages/ReviewerDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 
@@ -39,9 +42,26 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/about" element={<About />} />
+          <Route path="/archive" element={<Archive />} />
           <Route path="/login" element={<Login />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <AuthorDashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/reviewer/dashboard" 
+            element={
+              <ProtectedRoute>
+                <ReviewerDashboard />
+              </ProtectedRoute>
+            } 
+          />
           <Route 
             path="/submit" 
             element={

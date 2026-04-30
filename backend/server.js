@@ -4,6 +4,7 @@ const path = require('path');
 const db = require('./db');
 const fileDb = require('./file-db');
 const { OAuth2Client } = require('google-auth-library');
+const twilio = require('twilio');
 require('dotenv').config();
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -95,6 +96,29 @@ const initRealDb = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS messages (
+                id SERIAL PRIMARY KEY,
+                article_id INTEGER REFERENCES articles(id) ON DELETE CASCADE,
+                sender_role VARCHAR(20),
+                sender_name VARCHAR(255),
+                sender_email VARCHAR(100),
+                content TEXT,
+                file_content TEXT,
+                file_name VARCHAR(255),
+                file_type VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='messages' AND column_name='sender_email') THEN
+                    ALTER TABLE messages ADD COLUMN sender_email VARCHAR(100);
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='authors' AND column_name='phone') THEN
+                    ALTER TABLE authors ADD COLUMN phone VARCHAR(20);
+                END IF;
+            END $$;
+
             CREATE TABLE IF NOT EXISTS admins (
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
@@ -143,9 +167,9 @@ const initRealDb = async () => {
 
 initRealDb();
 
-app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(cors());
 
 // Serve Static Frontend Files
 const frontendPath = path.join(__dirname, '../frontend/dist');
@@ -165,6 +189,87 @@ app.post('/api/auth/login', async (req, res) => {
             res.status(401).json({ message: "Invalid credentials" });
         }
     } catch (err) {
+        res.status(500).json({ message: "Server Error" });
+    }
+});
+
+// In-memory store for OTPs (for production, use Redis or a DB table)
+const otpStore = new Map();
+
+app.post('/api/auth/send-otp', async (req, res) => {
+    const { phone } = req.body;
+    if (!phone) {
+        return res.status(400).json({ message: "Phone number is required" });
+    }
+    
+    // Generate a random 4-digit OTP
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    otpStore.set(phone, otp);
+    
+    // Set expiry for OTP (5 minutes)
+    setTimeout(() => otpStore.delete(phone), 5 * 60 * 1000);
+    
+    try {
+        const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+        
+        // In a real scenario, we would send the actual OTP
+        // For the demo/free trial to work without pre-verifying every number:
+        // We log it AND attempt to send if credentials exist.
+        console.log(`[SMS] Sending OTP ${otp} to ${phone}`);
+        
+        if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+            await client.messages.create({
+                body: `Your R Square Hospitals Journal OTP is: ${otp}. It expires in 5 minutes.`,
+                from: process.env.TWILIO_PHONE_NUMBER,
+                to: phone
+            });
+        }
+        
+        res.json({ message: "OTP sent successfully" });
+    } catch (err) {
+        console.error("SMS Sending Error:", err.message);
+        // We still return success for demo purposes even if Twilio fails (e.g. unverified trial number)
+        // so the user can still test with '1234'
+        res.json({ 
+            message: "OTP generated (Simulation Mode)", 
+            debug: "If you have Twilio credentials, check your .env file. Error: " + err.message 
+        });
+    }
+});
+
+app.post('/api/auth/verify-otp', async (req, res) => {
+    const { phone, otp } = req.body;
+    
+    const storedOtp = otpStore.get(phone);
+    
+    // Allow '1234' for local testing if needed, or strictly enforce storedOtp
+    if (otp !== storedOtp && otp !== '1234') {
+        return res.status(401).json({ message: "Invalid OTP" });
+    }
+    
+    // Clear OTP after successful use
+    otpStore.delete(phone);
+    try {
+        const syntheticEmail = `${phone}@phone.auth`;
+        const result = await activeDb.query('SELECT * FROM authors WHERE email = $1', [syntheticEmail]);
+        if (result.rows.length > 0) {
+            const user = result.rows[0];
+            // Ensure phone is stored if missing
+            if (!user.phone) {
+                await activeDb.query('UPDATE authors SET phone = $1 WHERE id = $2', [phone, user.id]);
+                user.phone = phone;
+            }
+            res.json(user);
+        } else {
+            // Create user if not exists
+            const newAuthor = await activeDb.query(
+                'INSERT INTO authors (name, email, phone) VALUES ($1, $2, $3) RETURNING *',
+                ['Phone User', syntheticEmail, phone]
+            );
+            res.json(newAuthor.rows[0]);
+        }
+    } catch (err) {
+        console.error("OTP Verify Error:", err);
         res.status(500).json({ message: "Server Error" });
     }
 });
@@ -273,14 +378,16 @@ app.post('/api/auth/google', async (req, res) => {
 });
 
 // Get all articles
+// Chat Messages managed via updated routes at the bottom of file
+
 app.get('/api/articles', async (req, res) => {
     try {
         const result = await activeDb.query(`
-            SELECT a.*, au.name as author_name, c.name as category_name 
+            SELECT a.*, au.name as author_name, au.email as author_email, au.phone as author_phone, c.name as category_name 
             FROM articles a
             JOIN authors au ON a.author_id = au.id
             JOIN categories c ON a.category_id = c.id
-            ORDER BY a.published_date DESC
+            ORDER BY a.created_at DESC
         `);
         res.json(result.rows);
     } catch (err) {
@@ -387,6 +494,33 @@ app.put('/api/articles/:id/status', async (req, res) => {
         console.error("STATUS UPDATE ERROR:", err.message);
         // Mock success for demo
         res.json({ id, status, message: "Status updated (Mock mode)" });
+    }
+});
+
+app.put('/api/articles/:id/revision', async (req, res) => {
+    const { id } = req.params;
+    const { manuscriptContent, manuscriptName, manuscriptType } = req.body;
+    
+    try {
+        const result = await activeDb.query(
+            'UPDATE articles SET manuscript_content = $1, manuscript_name = $2, manuscript_type = $3, status = $4 WHERE id = $5 RETURNING *',
+            [manuscriptContent, manuscriptName, manuscriptType, 'Pending', id]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "Article not found" });
+        }
+        
+        // Add a system message to the chat
+        await activeDb.query(
+            'INSERT INTO messages (article_id, sender_role, sender_name, content) VALUES ($1, $2, $3, $4)',
+            [id, 'author', 'System', 'Author uploaded a revised version of the manuscript.']
+        );
+
+        res.json({ message: "Revision uploaded successfully", article: result.rows[0] });
+    } catch (err) {
+        console.error("REVISION ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
     }
 });
 
@@ -514,7 +648,195 @@ app.get(/^(?!\/api).+/, (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 
+app.get('/api/messages/:articleId', async (req, res) => {
+    const { articleId } = req.params;
+    try {
+        const result = await activeDb.query(
+            'SELECT * FROM messages WHERE article_id = $1 ORDER BY created_at ASC',
+            [articleId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error("FETCH MESSAGES ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
+// Admin: Get all recent messages across all articles
+app.get('/api/admin/all-messages', async (req, res) => {
+    try {
+        const result = await activeDb.query(`
+            SELECT m.*, a.title as article_title 
+            FROM messages m
+            JOIN articles a ON m.article_id = a.id
+            ORDER BY m.created_at DESC
+            LIMIT 50
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error("FETCH ALL MESSAGES ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
+app.delete('/api/messages/all', async (req, res) => {
+    try {
+        await activeDb.query('DELETE FROM messages WHERE sender_role = $1', ['author']);
+        res.json({ message: "Admin notifications cleared" });
+    } catch (err) {
+        console.error("CLEAR ADMIN MESSAGES ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
+app.get('/api/author/notifications', async (req, res) => {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ message: "Email required" });
+
+    try {
+        const result = await activeDb.query(`
+            SELECT m.*, a.title as article_title 
+            FROM messages m
+            JOIN articles a ON m.article_id = a.id
+            JOIN authors au ON a.author_id = au.id
+            WHERE au.email = $1 AND m.sender_role = 'admin'
+            ORDER BY m.created_at DESC
+            LIMIT 20
+        `, [email]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error("AUTHOR NOTIFICATIONS ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
+app.delete('/api/author/notifications/clear', async (req, res) => {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ message: "Email required" });
+
+    try {
+        await activeDb.query(`
+            DELETE FROM messages 
+            WHERE sender_role = 'admin' AND article_id IN (
+                SELECT a.id FROM articles a JOIN authors au ON a.author_id = au.id WHERE au.email = $1
+            )
+        `, [email]);
+        res.json({ message: "Author notifications cleared" });
+    } catch (err) {
+        console.error("CLEAR AUTHOR MESSAGES ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
+app.post('/api/messages', async (req, res) => {
+    const { articleId, senderRole, senderName, senderEmail, content, fileContent, fileName, fileType } = req.body;
+    console.log(`[CHAT] Message received for article ${articleId} from ${senderName} (${senderEmail || senderRole})`);
+    try {
+        const result = await activeDb.query(
+            'INSERT INTO messages (article_id, sender_role, sender_name, sender_email, content, file_content, file_name, file_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+            [articleId, senderRole, senderName, senderEmail, content, fileContent, fileName, fileType]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error("SEND MESSAGE ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
+// Fetch all reviewers
+app.get('/api/reviewers', async (req, res) => {
+    try {
+        const result = await activeDb.query('SELECT * FROM reviewers ORDER BY name ASC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error("FETCH REVIEWERS ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
+// Assign reviewer to article
+app.post('/api/review-assignments', async (req, res) => {
+    const { articleId, reviewerId } = req.body;
+    try {
+        const result = await activeDb.query(
+            'INSERT INTO review_assignments (article_id, reviewer_id) VALUES ($1, $2) RETURNING *',
+            [articleId, reviewerId]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error("ASSIGN REVIEWER ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
+// Fetch assignments for a specific reviewer
+app.get('/api/reviewer/assignments', async (req, res) => {
+    const { email } = req.query;
+    try {
+        const result = await activeDb.query(`
+            SELECT ra.*, a.title as article_title, a.manuscript_content, a.manuscript_name 
+            FROM review_assignments ra
+            JOIN articles a ON ra.article_id = a.id
+            JOIN reviewers r ON ra.reviewer_id = r.id
+            WHERE r.email = $1
+        `, [email]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error("FETCH REVIEWER ASSIGNMENTS ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
+// Submit feedback
+app.put('/api/review-assignments/:id', async (req, res) => {
+    const { id } = req.params;
+    const { feedback, score } = req.body;
+    try {
+        const result = await activeDb.query(
+            'UPDATE review_assignments SET feedback = $1, score = $2, status = $3, completed_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *',
+            [feedback, score, 'completed', id]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error("SUBMIT FEEDBACK ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
+// Fetch all issues
+app.get('/api/issues', async (req, res) => {
+    try {
+        const result = await activeDb.query('SELECT * FROM issues ORDER BY publication_year DESC, volume DESC, issue_number DESC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error("FETCH ISSUES ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
+// Fetch articles in an issue
+app.get('/api/issues/:id/articles', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await activeDb.query(`
+            SELECT a.*, au.name as author_name 
+            FROM articles a
+            JOIN authors au ON a.author_id = au.id
+            WHERE a.issue_id = $1 AND a.status = 'Published'
+        `, [id]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error("FETCH ISSUE ARTICLES ERROR:", err.message);
+        res.status(500).json({ message: "Database Error" });
+    }
+});
+
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`\n🚀 Application is ready! Click here to open: http://localhost:${PORT}\n`);
+    console.log(`\n===================================================`);
+    console.log(`  R SQUARE HOSPITALS JOURNAL - BACKEND ACTIVE`);
+    console.log(`  VERSION: 2.0.1 (MULTIMEDIA CHAT ENABLED)`);
+    console.log(`===================================================`);
+    console.log(`\n🚀 SERVER RUNNING ON PORT: ${PORT}`);
+    console.log(`🔗 OPEN APPLICATION: http://localhost:${PORT}`);
+    console.log(`\n---------------------------------------------------\n`);
 });

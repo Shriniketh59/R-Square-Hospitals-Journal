@@ -3,12 +3,17 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
-import { Lock, Mail, ArrowRight, BookOpen, User } from 'lucide-react';
+import { Lock, Mail, ArrowRight, BookOpen, User, Phone, ShieldCheck } from 'lucide-react';
 import axios from 'axios';
+import PhoneInputPkg from 'react-phone-input-2';
+const PhoneInput = PhoneInputPkg.default || PhoneInputPkg;
+import 'react-phone-input-2/lib/style.css';
 
 const Login = () => {
   const [isAdminMode, setIsAdminMode] = useState(false);
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState(['', '', '', '']);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -33,15 +38,49 @@ const Login = () => {
         const response = await axios.post('/api/admin/login', { username, password });
         localStorage.setItem('adminUser', JSON.stringify(response.data));
         navigate('/admin/dashboard');
-      } else {
-        const response = await axios.post('/api/auth/login', { email, password });
-        login(response.data);
-        navigate(from, { replace: true });
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Invalid credentials');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendOTP = async (e) => {
+    e.preventDefault();
+    if (!phone) {
+        setError('Please enter a phone number');
+        return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+        await axios.post('/api/auth/send-otp', { phone: '+' + phone });
+        setOtpSent(true);
+    } catch (err) {
+        setError(err.response?.data?.message || 'Failed to send OTP');
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const handleVerifyOTP = async (e) => {
+    e.preventDefault();
+    const otpValue = otp.join('');
+    if (otpValue.length < 4) {
+        setError('Please enter complete OTP');
+        return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+        const response = await axios.post('/api/auth/verify-otp', { phone: '+' + phone, otp: otpValue });
+        login(response.data);
+        navigate(from, { replace: true });
+    } catch (err) {
+        setError(err.response?.data?.message || 'Invalid OTP');
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -62,7 +101,7 @@ const Login = () => {
 
     try {
       const endpoint = isAdminMode ? '/api/admin/reset-password' : '/api/auth/reset-password';
-      const payload = isAdminMode ? { username, newPassword, securityCode } : { email, newPassword, securityCode };
+      const payload = { username, newPassword, securityCode };
       
       await axios.post(endpoint, payload);
       setResetMessage('Password updated successfully.');
@@ -123,7 +162,7 @@ const Login = () => {
                   <div className="w-full border-t border-slate-100"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-slate-400 font-bold uppercase text-[10px] tracking-widest">Or continue with email</span>
+                  <span className="px-2 bg-white text-slate-400 font-bold uppercase text-[10px] tracking-widest">Or continue with phone</span>
                 </div>
               </div>
             </>
@@ -146,15 +185,15 @@ const Login = () => {
 
               <div>
                 <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">
-                  {isAdminMode ? 'Admin Username' : 'Registered Email'}
+                  Admin Username
                 </label>
                 <input
                   required
-                  type={isAdminMode ? "text" : "email"}
-                  value={isAdminMode ? username : email}
-                  onChange={(e) => isAdminMode ? setUsername(e.target.value) : setEmail(e.target.value)}
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="block w-full px-4 py-3 border border-slate-100 rounded-2xl bg-slate-50 text-sm"
-                  placeholder={isAdminMode ? "admin_id" : "name@university.edu"}
+                  placeholder="admin_id"
                 />
               </div>
 
@@ -168,7 +207,7 @@ const Login = () => {
                   value={securityCode}
                   onChange={(e) => setSecurityCode(e.target.value)}
                   className="block w-full px-4 py-3 border border-slate-100 rounded-2xl bg-slate-50 text-sm"
-                  placeholder={isAdminMode ? "Enter RSQ2026" : "Enter AUTH2026"}
+                  placeholder="Enter RSQ2026"
                 />
               </div>
 
@@ -206,75 +245,150 @@ const Login = () => {
               )}
 
               {isAdminMode ? (
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Admin Username</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                      <User className="h-5 w-5 text-slate-400" />
+                <>
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Admin Username</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <User className="h-5 w-5 text-slate-400" />
+                      </div>
+                      <input
+                        required
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        className="block w-full pl-12 pr-4 py-3.5 border border-slate-100 rounded-2xl leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all text-sm"
+                        placeholder="admin_id"
+                      />
                     </div>
-                    <input
-                      required
-                      type="text"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      className="block w-full pl-12 pr-4 py-3.5 border border-slate-100 rounded-2xl leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all text-sm"
-                      placeholder="admin_id"
-                    />
                   </div>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Email Address</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                      <Mail className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <input
-                      required
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="block w-full pl-12 pr-4 py-3.5 border border-slate-100 rounded-2xl leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all text-sm"
-                      placeholder="name@university.edu"
-                    />
-                  </div>
-                </div>
-              )}
 
-              <div>
-                <div className="flex justify-between items-center mb-2 px-1">
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest">Password</label>
-                  <button 
-                    type="button" 
-                    onClick={() => setIsResetting(true)}
-                    className="text-[10px] font-bold text-primary-600 hover:underline"
+                  <div>
+                    <div className="flex justify-between items-center mb-2 px-1">
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest">Password</label>
+                      <button 
+                        type="button" 
+                        onClick={() => setIsResetting(true)}
+                        className="text-[10px] font-bold text-primary-600 hover:underline"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <Lock className="h-5 w-5 text-slate-400" />
+                      </div>
+                      <input
+                        required
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="block w-full pl-12 pr-4 py-3.5 border border-slate-100 rounded-2xl leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all text-sm"
+                        placeholder="••••••••"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    disabled={loading}
+                    type="submit"
+                    className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-2xl shadow-lg text-sm font-black text-white transition-all ${loading ? 'bg-slate-400' : 'bg-slate-900 hover:bg-black'} flex items-center space-x-2`}
                   >
-                    Forgot Password?
+                    {loading ? 'Authenticating...' : 'Access Dashboard'}
+                    {!loading && <ArrowRight className="h-5 w-5" />}
                   </button>
-                </div>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-slate-400" />
-                  </div>
-                  <input
-                    required
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="block w-full pl-12 pr-4 py-3.5 border border-slate-100 rounded-2xl leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all text-sm"
-                    placeholder="••••••••"
-                  />
-                </div>
-              </div>
-
-              <button
-                disabled={loading}
-                type="submit"
-                className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-2xl shadow-lg text-sm font-black text-white transition-all ${loading ? 'bg-slate-400' : (isAdminMode ? 'bg-slate-900 hover:bg-black' : 'bg-primary-600 hover:bg-primary-700')} flex items-center space-x-2`}
-              >
-                {loading ? 'Authenticating...' : (isAdminMode ? 'Access Dashboard' : 'Sign In')}
-                {!loading && <ArrowRight className="h-5 w-5" />}
-              </button>
+                </>
+              ) : (
+                !otpSent ? (
+                  <>
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Phone Number</label>
+                      <div className="phone-input-wrapper">
+                        <PhoneInput
+                          country={'us'}
+                          value={phone}
+                          onChange={phone => setPhone(phone)}
+                          inputStyle={{
+                            width: '100%',
+                            height: '52px',
+                            borderRadius: '1rem',
+                            borderColor: '#f1f5f9',
+                            backgroundColor: '#f8fafc',
+                            fontSize: '0.875rem'
+                          }}
+                          buttonStyle={{
+                            borderRadius: '1rem 0 0 1rem',
+                            borderColor: '#f1f5f9',
+                            backgroundColor: '#f8fafc',
+                            paddingLeft: '4px'
+                          }}
+                          dropdownStyle={{
+                            borderRadius: '1rem',
+                            boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+                            border: '1px solid #f1f5f9'
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <button
+                      disabled={loading || !phone}
+                      type="button"
+                      onClick={handleSendOTP}
+                      className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-2xl shadow-lg text-sm font-black text-white transition-all ${loading || !phone ? 'bg-primary-400' : 'bg-primary-600 hover:bg-primary-700'} flex items-center space-x-2`}
+                    >
+                      {loading ? 'Sending...' : 'Generate OTP'}
+                      {!loading && <ArrowRight className="h-5 w-5" />}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-center text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Enter 4-Digit PIN</label>
+                      <div className="flex justify-center space-x-4">
+                        {otp.map((digit, index) => (
+                          <input
+                            key={index}
+                            id={`otp-${index}`}
+                            type="text"
+                            maxLength="1"
+                            value={digit}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (/^[0-9]$/.test(val) || val === '') {
+                                const newOtp = [...otp];
+                                newOtp[index] = val;
+                                setOtp(newOtp);
+                                if (val && index < 3) {
+                                  document.getElementById(`otp-${index + 1}`).focus();
+                                }
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Backspace' && !digit && index > 0) {
+                                document.getElementById(`otp-${index - 1}`).focus();
+                              }
+                            }}
+                            className="w-14 h-14 text-center text-2xl font-bold border border-slate-200 rounded-2xl bg-slate-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all shadow-sm"
+                          />
+                        ))}
+                      </div>
+                      <div className="text-center mt-4">
+                        <p className="text-xs text-slate-500">OTP sent via SMS to +{phone}</p>
+                        <button type="button" onClick={() => setOtpSent(false)} className="text-xs font-bold text-primary-600 hover:underline mt-1">Change Number</button>
+                      </div>
+                    </div>
+                    <button
+                      disabled={loading || otp.join('').length < 4}
+                      type="button"
+                      onClick={handleVerifyOTP}
+                      className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-2xl shadow-lg text-sm font-black text-white transition-all ${loading || otp.join('').length < 4 ? 'bg-primary-400' : 'bg-primary-600 hover:bg-primary-700'} flex items-center space-x-2`}
+                    >
+                      {loading ? 'Verifying...' : 'Verify OTP'}
+                      {!loading && <ShieldCheck className="h-5 w-5" />}
+                    </button>
+                  </>
+                )
+              )}
             </form>
           )}
 
