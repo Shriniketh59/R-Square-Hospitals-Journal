@@ -2,126 +2,71 @@
 
 <div align="center">
 
-![Java](https://img.shields.io/badge/Java-Programming-red)
-![Hospital Management](https://img.shields.io/badge/Hospital-Management-blue)
-![Database](https://img.shields.io/badge/Database-SQL-success)
+![React](https://img.shields.io/badge/React-Frontend-61DAFB?logo=react&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-Backend-339933?logo=node.js&logoColor=white)
+![Express.js](https://img.shields.io/badge/Express.js-API-000000?logo=express)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-336791?logo=postgresql&logoColor=white)
 ![Status](https://img.shields.io/badge/Status-Completed-brightgreen)
 
-### Digital Hospital Journal & Patient Record Management System
+### Full-Stack Hospital Journal & Patient Record Management System
 
-*"Streamlining healthcare documentation through secure and efficient digital record management."*
+*A modern healthcare management platform built with React, Node.js, Express.js, and PostgreSQL.*
 
 </div>
 
 ---
 
-# 📖 Project Overview
-
-**R-Square Hospitals Journal** is a healthcare management application developed to digitally manage patient records, medical history, appointments, prescriptions, and hospital documentation.
-
-The system replaces traditional paper-based records with a secure digital platform, enabling hospitals to efficiently organize patient information, improve healthcare services, and reduce manual documentation errors.
-
----
-
-# 🎯 Problem Statement
-
-Traditional hospital record management often faces challenges such as:
-
-- Paper-based documentation
-- Data redundancy
-- Difficulty retrieving patient history
-- Appointment management issues
-- Medical record security concerns
-- Increased administrative workload
-
-This project provides a centralized digital solution for hospital record management.
-
----
-
-# 🎯 Objectives
-
-- Digitize hospital records
-- Manage patient information efficiently
-- Improve appointment scheduling
-- Store medical history securely
-- Reduce paperwork
-- Enhance healthcare administration
-
----
-
-# ✨ Features
-
-- 👨‍⚕️ Patient Registration
-- 🩺 Doctor Management
-- 📅 Appointment Scheduling
-- 📋 Medical History Management
-- 💊 Prescription Records
-- 🏥 Department Management
-- 🔍 Patient Search
-- 📊 Hospital Reports
-- 🔐 Secure Login System
-- 🖥 User-Friendly Interface
-
----
-
-# 🛠️ Technology Stack
-
-## Programming Language
-
-- Java
-
-## Database
-
-- MySQL
+# 🛠 Technology Stack
 
 ## Frontend
-
-- Java Swing / JavaFX *(Based on implementation)*
+- React.js
+- HTML5
+- CSS3
+- JavaScript (ES6+)
 
 ## Backend
+- Node.js
+- Express.js
+- REST API
 
-- Java
+## Database
+- PostgreSQL
 
-## Tools
-
-- NetBeans / Eclipse
+## Development Tools
+- Visual Studio Code
 - Git
 - GitHub
-
----
-
-# 🏗️ System Workflow
-
-```
-Patient Registration
-          │
-          ▼
-Appointment Booking
-          │
-          ▼
-Doctor Consultation
-          │
-          ▼
-Medical Record Update
-          │
-          ▼
-Prescription Generation
-          │
-          ▼
-Hospital Database
-```
+- npm
 
 ---
 
 # 📂 Project Structure
 
 ```
-R-Square-Hospitals-Journal
+R-Square-Hospitals-Journal/
 │
-├── src/
+├── backend/
+│   ├── controllers/
+│   ├── routes/
+│   ├── models/
+│   ├── middleware/
+│   ├── config/
+│   └── server.js
+│
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── services/
+│   │   └── App.jsx
+│   ├── package.json
+│   └── vite.config.js (or package.json if using CRA)
+│
 ├── database/
-├── assets/
-├── screenshots/
+│   ├── schema.sql
+│   └── seed.sql
+│
 ├── README.md
 └── LICENSE
 ```
@@ -130,116 +75,42 @@ R-Square-Hospitals-Journal
 
 # 🚀 Installation
 
-Clone the repository
+## Clone Repository
 
 ```bash
 git clone https://github.com/Shriniketh59/R-Square-Hospitals-Journal.git
 ```
 
-Navigate into the project
+## Install Backend Dependencies
 
 ```bash
-cd R-Square-Hospitals-Journal
+cd backend
+npm install
 ```
 
-Open the project in NetBeans or Eclipse.
+## Install Frontend Dependencies
 
-Configure the MySQL database.
+```bash
+cd ../frontend
+npm install
+```
 
-Run the application.
+## Configure PostgreSQL
 
----
+- Create a PostgreSQL database
+- Update the database credentials in the backend configuration
+- Import the schema.sql file
 
-# 📊 Applications
+## Run Backend
 
-- Hospitals
-- Clinics
-- Medical Centers
-- Diagnostic Labs
-- Healthcare Institutions
-- Educational Medical Projects
+```bash
+npm start
+```
 
----
+## Run Frontend
 
-# 📈 Benefits
+```bash
+npm run dev
+```
 
-- Faster patient record retrieval
-- Reduced paperwork
-- Improved appointment management
-- Secure medical data storage
-- Better healthcare administration
-- Enhanced patient care
-
----
-
-# 🔮 Future Enhancements
-
-- Online Appointment Booking
-- Doctor Portal
-- Patient Portal
-- Electronic Health Records (EHR)
-- Cloud Database Integration
-- AI-Based Disease Prediction
-- Mobile Application
-- SMS & Email Notifications
-
----
-
-# 📸 Screenshots
-
-Add screenshots of:
-
-- Login Page
-- Dashboard
-- Patient Registration
-- Appointment Management
-- Medical Records
-- Reports
-
----
-
-# 📚 Learning Outcomes
-
-This project demonstrates:
-
-- Java Programming
-- Database Management
-- Software Engineering
-- CRUD Operations
-- GUI Development
-- Healthcare Information Systems
-
----
-
-# 🤝 Contributing
-
-Contributions are welcome!
-
-1. Fork this repository
-2. Create a feature branch
-3. Commit your changes
-4. Submit a Pull Request
-
----
-
-# 👨‍💻 Author
-
-**Shri Niketh**
-
-🎓 B.Tech – Artificial Intelligence & Data Science
-
-🔗 GitHub: https://github.com/Shriniketh59
-
-💼 LinkedIn: https://www.linkedin.com/in/shri-niketh-2337b0358
-
----
-
-# ⭐ Support
-
-If you found this project useful, please consider giving it a ⭐ on GitHub.
-
----
-
-# 📄 License
-
-This project is licensed under the MIT License.
+The application will now be available locally.
